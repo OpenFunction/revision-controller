@@ -26,9 +26,9 @@ import (
 	openfunction "github.com/openfunction/apis/core/v1beta1"
 	"github.com/openfunction/pkg/util"
 	"github.com/openfunction/revision-controller/pkg/constants"
-	"github.com/openfunction/revision-controller/pkg/revision"
-	"github.com/openfunction/revision-controller/pkg/revision/git"
-	"github.com/openfunction/revision-controller/pkg/revision/image"
+	revisioncontroller "github.com/openfunction/revision-controller/pkg/revision-controller"
+	"github.com/openfunction/revision-controller/pkg/revision-controller/git"
+	"github.com/openfunction/revision-controller/pkg/revision-controller/image"
 	"github.com/openfunction/revision-controller/pkg/utils"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -50,14 +50,14 @@ type FunctionReconciler struct {
 	client.Client
 	log logr.Logger
 
-	revisionControllers map[string]revision.RevisionController
+	revisionControllers map[string]revisioncontroller.RevisionController
 }
 
 func NewFunctionReconciler(mgr manager.Manager) *FunctionReconciler {
 	r := &FunctionReconciler{
 		Client:              mgr.GetClient(),
 		log:                 ctrl.Log.WithName("controllers").WithName("Function"),
-		revisionControllers: make(map[string]revision.RevisionController),
+		revisionControllers: make(map[string]revisioncontroller.RevisionController),
 	}
 
 	return r
@@ -184,7 +184,7 @@ func getRevisionControllerConfig(params string) (map[string]string, error) {
 	return config, nil
 }
 
-func newRevisionController(c client.Client, fn *openfunction.Function, revisionType string, config map[string]string) (revision.RevisionController, error) {
+func newRevisionController(c client.Client, fn *openfunction.Function, revisionType string, config map[string]string) (revisioncontroller.RevisionController, error) {
 	switch revisionType {
 	case constants.RevisionTypeSource:
 		return git.NewRevisionController(c, fn, revisionType, config)

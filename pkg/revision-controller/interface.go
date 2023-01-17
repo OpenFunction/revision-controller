@@ -1,4 +1,4 @@
-package revision
+package revision_controller
 
 type RevisionController interface {
 	Start()

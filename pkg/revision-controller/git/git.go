@@ -12,11 +12,11 @@ import (
 	"github.com/go-logr/logr"
 	openfunction "github.com/openfunction/apis/core/v1beta1"
 	"github.com/openfunction/revision-controller/pkg/constants"
-	"github.com/openfunction/revision-controller/pkg/revision"
-	"github.com/openfunction/revision-controller/pkg/revision/git/provider"
-	"github.com/openfunction/revision-controller/pkg/revision/git/provider/gitee"
-	"github.com/openfunction/revision-controller/pkg/revision/git/provider/github"
-	"github.com/openfunction/revision-controller/pkg/revision/git/provider/gitlab"
+	revisioncontroller "github.com/openfunction/revision-controller/pkg/revision-controller"
+	"github.com/openfunction/revision-controller/pkg/revision-controller/git/provider"
+	"github.com/openfunction/revision-controller/pkg/revision-controller/git/provider/gitee"
+	"github.com/openfunction/revision-controller/pkg/revision-controller/git/provider/github"
+	"github.com/openfunction/revision-controller/pkg/revision-controller/git/provider/gitlab"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -48,7 +48,7 @@ type Config struct {
 	PollingInterval time.Duration
 }
 
-func NewRevisionController(c client.Client, fn *openfunction.Function, revisionType string, config map[string]string) (revision.RevisionController, error) {
+func NewRevisionController(c client.Client, fn *openfunction.Function, revisionType string, config map[string]string) (revisioncontroller.RevisionController, error) {
 	r := &RevisionController{
 		Client: c,
 		log:    ctrl.Log.WithName("RevisionController").WithValues("Function", fn.Namespace+"/"+fn.Name, "Type", revisionType),

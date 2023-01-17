@@ -1,4 +1,4 @@
-package gitee
+package github
 
 import (
 	"context"
@@ -6,15 +6,14 @@ import (
 	"net/http"
 	"strings"
 
-	"gitee.com/openeuler/go-gitee/gitee"
-	"github.com/antihax/optional"
-	"github.com/openfunction/revision-controller/pkg/revision/git/provider"
+	"github.com/google/go-github/v49/github"
+	"github.com/openfunction/revision-controller/pkg/revision-controller/git/provider"
 	"golang.org/x/oauth2"
 )
 
 type Provider struct {
 	config *provider.GitConfig
-	client *gitee.APIClient
+	client *github.Client
 
 	owner  string
 	repo   string
@@ -24,23 +23,20 @@ type Provider struct {
 func NewProvider(config *provider.GitConfig) (provider.GitProvider, error) {
 	p := &Provider{
 		config: config,
+		client: github.NewClient(oauth2.NewClient(context.Background(), oauth2.StaticTokenSource(
+			&oauth2.Token{AccessToken: config.Password},
+		))),
 	}
 
-	conf := gitee.NewConfiguration()
-	conf.HTTPClient = oauth2.NewClient(context.Background(), oauth2.StaticTokenSource(
-		&oauth2.Token{AccessToken: config.Password},
-	))
-	p.client = gitee.NewAPIClient(conf)
-
 	url := config.URL
-	url = strings.TrimPrefix(url, "https://gitee.com/")
+	url = strings.TrimPrefix(url, "https://github.com/")
 	url = strings.TrimSuffix(url, ".git")
 	paths := strings.Split(url, "/")
 	p.owner = paths[0]
 	p.repo = paths[1]
 
 	if config.Branch == nil || *config.Branch == "" {
-		project, resp, err := p.client.RepositoriesApi.GetV5ReposOwnerRepo(context.Background(), p.owner, p.repo, &gitee.GetV5ReposOwnerRepoOpts{})
+		repository, resp, err := p.client.Repositories.Get(context.Background(), p.owner, p.repo)
 		if err != nil {
 			return nil, err
 		}
@@ -49,12 +45,16 @@ func NewProvider(config *provider.GitConfig) (provider.GitProvider, error) {
 			return nil, fmt.Errorf("%s", resp.Status)
 		}
 
-		p.branch = project.DefaultBranch
+		if repository.DefaultBranch == nil {
+			return nil, fmt.Errorf("%s", "unknown default branch")
+		}
+
+		p.branch = *repository.DefaultBranch
 	} else {
 		p.branch = *config.Branch
 	}
 
-	_, resp, err := p.client.RepositoriesApi.GetV5ReposOwnerRepoBranchesBranch(context.Background(), p.owner, p.repo, p.branch, nil)
+	_, resp, err := p.client.Repositories.GetBranch(context.Background(), p.owner, p.repo, p.branch, true)
 	if err != nil {
 		return nil, err
 	}
@@ -67,9 +67,11 @@ func NewProvider(config *provider.GitConfig) (provider.GitProvider, error) {
 }
 
 func (p *Provider) GetHead() (string, error) {
-	commits, resp, err := p.client.RepositoriesApi.GetV5ReposOwnerRepoCommits(context.Background(), p.owner, p.repo, &gitee.GetV5ReposOwnerRepoCommitsOpts{
-		Sha:     optional.NewString(p.branch),
-		PerPage: optional.NewInt32(1),
+	commits, resp, err := p.client.Repositories.ListCommits(context.Background(), p.owner, p.repo, &github.CommitsListOptions{
+		SHA: p.branch,
+		ListOptions: github.ListOptions{
+			PerPage: 1,
+		},
 	})
 	if err != nil {
 		return "", err
@@ -83,5 +85,5 @@ func (p *Provider) GetHead() (string, error) {
 		return "", fmt.Errorf("%s", "no commit found")
 	}
 
-	return commits[0].Sha, nil
+	return *commits[0].SHA, nil
 }

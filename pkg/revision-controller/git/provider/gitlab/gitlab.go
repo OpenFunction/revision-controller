@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/openfunction/revision-controller/pkg/revision/git/provider"
+	"github.com/openfunction/revision-controller/pkg/revision-controller/git/provider"
 	"github.com/xanzy/go-gitlab"
 )
 
