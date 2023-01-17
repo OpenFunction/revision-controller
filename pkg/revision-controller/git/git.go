@@ -48,17 +48,17 @@ type Config struct {
 	PollingInterval time.Duration
 }
 
-func NewRevisionController(c client.Client, fn *openfunction.Function, revisionType string, config map[string]string) (revisioncontroller.RevisionController, error) {
+func NewRevisionController(c client.Client, fn *openfunction.Function, revisionControllerType string, config map[string]string) (revisioncontroller.RevisionController, error) {
 	r := &RevisionController{
 		Client: c,
-		log:    ctrl.Log.WithName("RevisionController").WithValues("Function", fn.Namespace+"/"+fn.Name, "Type", revisionType),
+		log:    ctrl.Log.WithName("RevisionController").WithValues("Function", fn.Namespace+"/"+fn.Name, "Type", revisionControllerType),
 		fn:     fn,
 		stopCh: make(chan os.Signal),
 	}
 	signal.Notify(r.stopCh, os.Interrupt, syscall.SIGTERM)
 
 	var err error
-	r.config, err = r.getRevisionConfig(config)
+	r.config, err = r.getRevisionControllerConfig(config)
 	if err != nil {
 		return nil, err
 	}
@@ -105,7 +105,7 @@ func (r *RevisionController) Start() {
 		for {
 			select {
 			case <-r.stopCh:
-				r.log.Info("revision stopped")
+				r.log.Info("revision controller stopped")
 				return
 			default:
 			}
@@ -115,11 +115,11 @@ func (r *RevisionController) Start() {
 		}
 	}()
 
-	r.log.Info("revision started")
+	r.log.Info("revision controller started")
 }
 
 func (r *RevisionController) Update(config map[string]string) error {
-	revisionConfig, err := r.getRevisionConfig(config)
+	revisionControllerConfig, err := r.getRevisionControllerConfig(config)
 	if err != nil {
 		return err
 	}
@@ -129,10 +129,10 @@ func (r *RevisionController) Update(config map[string]string) error {
 		return err
 	}
 
-	if revisionConfig.RepoType != r.config.RepoType ||
+	if revisionControllerConfig.RepoType != r.config.RepoType ||
 		!reflect.DeepEqual(r.gitConfig, gitConfig) {
 		r.log.Info("update git provider")
-		gp, err := newProvider(revisionConfig.RepoType, gitConfig)
+		gp, err := newProvider(revisionControllerConfig.RepoType, gitConfig)
 		if err != nil {
 			return err
 		}
@@ -141,7 +141,7 @@ func (r *RevisionController) Update(config map[string]string) error {
 		r.gitConfig = gitConfig
 	}
 
-	r.config = revisionConfig
+	r.config = revisionControllerConfig
 	return nil
 }
 
@@ -150,7 +150,7 @@ func (r *RevisionController) Stop() {
 	signal.Stop(r.stopCh)
 }
 
-func (r *RevisionController) getRevisionConfig(config map[string]string) (*Config, error) {
+func (r *RevisionController) getRevisionControllerConfig(config map[string]string) (*Config, error) {
 	interval := constants.DefaultPollingInterval
 	str := config[constants.PollingInterval]
 	if str != "" {
@@ -161,16 +161,16 @@ func (r *RevisionController) getRevisionConfig(config map[string]string) (*Confi
 		}
 	}
 
-	revisionConfig := &Config{
+	revisionControllerConfig := &Config{
 		RepoType:        config[constants.RepoType],
 		PollingInterval: interval,
 	}
 
-	if revisionConfig.RepoType == "" {
-		revisionConfig.RepoType = gitProviderGithub
+	if revisionControllerConfig.RepoType == "" {
+		revisionControllerConfig.RepoType = gitProviderGithub
 	}
 
-	return revisionConfig, nil
+	return revisionControllerConfig, nil
 }
 
 func (r *RevisionController) getGitConfig(config map[string]string) (*provider.GitConfig, error) {

@@ -33,8 +33,8 @@ type RevisionController struct {
 }
 
 type Config struct {
-	RevisionType    string
-	PollingInterval time.Duration
+	RevisionControllerType string
+	PollingInterval        time.Duration
 	imageConfig
 }
 
@@ -44,17 +44,17 @@ type imageConfig struct {
 	credential *v1.LocalObjectReference
 }
 
-func NewRevisionController(c client.Client, fn *openfunction.Function, revisionType string, config map[string]string) (revisioncontroller.RevisionController, error) {
+func NewRevisionController(c client.Client, fn *openfunction.Function, revisionControllerType string, config map[string]string) (revisioncontroller.RevisionController, error) {
 	r := &RevisionController{
 		Client: c,
-		log:    ctrl.Log.WithName("RevisionController").WithValues("Function", fn.Namespace+"/"+fn.Name, "Type", revisionType),
+		log:    ctrl.Log.WithName("RevisionController").WithValues("Function", fn.Namespace+"/"+fn.Name, "Type", revisionControllerType),
 		fn:     fn,
 		stopCh: make(chan os.Signal),
 	}
 	signal.Notify(r.stopCh, os.Interrupt, syscall.SIGTERM)
 
 	var err error
-	r.config, err = r.getRevisionConfig(config)
+	r.config, err = r.getRevisionControllerConfig(config)
 	if err != nil {
 		return nil, err
 	}
@@ -93,7 +93,7 @@ func (r *RevisionController) Start() {
 		for {
 			select {
 			case <-r.stopCh:
-				r.log.Info("revision stopped")
+				r.log.Info("revision controller stopped")
 				return
 			default:
 			}
@@ -103,21 +103,21 @@ func (r *RevisionController) Start() {
 		}
 	}()
 
-	r.log.Info("revision started")
+	r.log.Info("revision controller started")
 }
 
 func (r *RevisionController) Update(config map[string]string) error {
-	revisionConfig, err := r.getRevisionConfig(config)
+	revisionControllerConfig, err := r.getRevisionControllerConfig(config)
 	if err != nil {
 		return err
 	}
 
-	r.keychain, err = r.getKeychain(revisionConfig)
+	r.keychain, err = r.getKeychain(revisionControllerConfig)
 	if err != nil {
 		return err
 	}
 
-	r.config = revisionConfig
+	r.config = revisionControllerConfig
 	return nil
 }
 
@@ -126,7 +126,7 @@ func (r *RevisionController) Stop() {
 	signal.Stop(r.stopCh)
 }
 
-func (r *RevisionController) getRevisionConfig(config map[string]string) (*Config, error) {
+func (r *RevisionController) getRevisionControllerConfig(config map[string]string) (*Config, error) {
 	function, err := r.getFunction()
 	if err != nil {
 		return nil, err
@@ -148,9 +148,9 @@ func (r *RevisionController) getRevisionConfig(config map[string]string) (*Confi
 		insecure = false
 	}
 
-	revisionConfig := &Config{
-		RevisionType:    config[constants.RevisionType],
-		PollingInterval: interval,
+	revisionControllerConfig := &Config{
+		RevisionControllerType: config[constants.RevisionControllerType],
+		PollingInterval:        interval,
 		imageConfig: imageConfig{
 			image:      function.Spec.Image,
 			insecure:   insecure,
@@ -158,17 +158,17 @@ func (r *RevisionController) getRevisionConfig(config map[string]string) (*Confi
 		},
 	}
 
-	return revisionConfig, nil
+	return revisionControllerConfig, nil
 }
 
-func (r *RevisionController) getKeychain(revisionConfig *Config) (authn.Keychain, error) {
-	if revisionConfig.credential == nil {
+func (r *RevisionController) getKeychain(revisionControllerConfig *Config) (authn.Keychain, error) {
+	if revisionControllerConfig.credential == nil {
 		return nil, fmt.Errorf("image credential must be specified")
 	}
 
 	secret := v1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      revisionConfig.credential.Name,
+			Name:      revisionControllerConfig.credential.Name,
 			Namespace: r.fn.Namespace,
 		},
 	}
@@ -223,8 +223,8 @@ func (r *RevisionController) updateFunctionStatus(digest string) error {
 		return err
 	}
 
-	switch r.config.RevisionType {
-	case constants.RevisionTypeImage:
+	switch r.config.RevisionControllerType {
+	case constants.RevisionControllerTypeImage:
 		if function.Status.Serving == nil {
 			function.Status.Serving = &openfunction.Condition{}
 		}
@@ -232,7 +232,7 @@ func (r *RevisionController) updateFunctionStatus(digest string) error {
 		function.Status.Serving.ResourceHash = ""
 		function.Status.Revision = &openfunction.Revision{ImageDigest: digest}
 		r.log.Info("image changed, rerun serving")
-	case constants.RevisionTypeSourceImage:
+	case constants.RevisionControllerTypeSourceImage:
 		function.Status.Build = nil
 		r.log.Info("source image changed, rebuild function")
 	}

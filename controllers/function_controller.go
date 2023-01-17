@@ -37,8 +37,8 @@ import (
 )
 
 const (
-	revisionKey       = "openfunction.io/revision-trigger"
-	revisionParamsKey = "openfunction.io/revision-trigger-params"
+	revisionControllerKey       = "openfunction.io/revision-controller"
+	revisionControllerParamsKey = "openfunction.io/revision-controller-params"
 )
 
 var (
@@ -87,15 +87,15 @@ func (r *FunctionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	if err := r.Get(ctx, req.NamespacedName, fn); err != nil {
 		if util.IsNotFound(err) {
 			log.V(1).Info("Function deleted")
-			r.cleanRevisionByFunction(fn)
+			r.cleanRevisionControllerByFunction(fn)
 		}
 
 		return ctrl.Result{}, util.IgnoreNotFound(err)
 	}
 
 	if fn.Annotations == nil ||
-		fn.Annotations[revisionKey] != "enable" {
-		r.cleanRevisionByFunction(fn)
+		fn.Annotations[revisionControllerKey] != "enable" {
+		r.cleanRevisionControllerByFunction(fn)
 		return ctrl.Result{}, nil
 	}
 
@@ -103,44 +103,44 @@ func (r *FunctionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 }
 
 func (r *FunctionReconciler) addRevisionController(fn *openfunction.Function) error {
-	config, err := getRevisionControllerConfig(fn.Annotations[revisionParamsKey])
+	config, err := getRevisionControllerConfig(fn.Annotations[revisionControllerParamsKey])
 	if err != nil {
 		return err
 	}
 
-	revisionType := config[constants.RevisionType]
-	r.cleanRevisionByFunction(fn, revisionType)
+	revisionControllerType := config[constants.RevisionControllerType]
+	r.cleanRevisionControllerByFunction(fn, revisionControllerType)
 
-	switch revisionType {
-	case constants.RevisionTypeSource:
+	switch revisionControllerType {
+	case constants.RevisionControllerTypeSource:
 		if fn.Spec.Build == nil {
-			r.deleteRevisionController(fn, revisionType)
+			r.deleteRevisionController(fn, revisionControllerType)
 			return nil
 		}
 
 		if fn.Spec.Build.SrcRepo.Revision != nil {
 			if commitShaRegEx.MatchString(*fn.Spec.Build.SrcRepo.Revision) {
-				r.log.V(1).Info("source code point to a commit, no need to start revision")
-				r.deleteRevisionController(fn, revisionType)
+				r.log.V(1).Info("source code point to a commit, no need to start revision controller")
+				r.deleteRevisionController(fn, revisionControllerType)
 				return nil
 			}
 		}
-	case constants.RevisionTypeImage:
+	case constants.RevisionControllerTypeImage:
 		if fn.Spec.Serving == nil {
-			r.deleteRevisionController(fn, revisionType)
+			r.deleteRevisionController(fn, revisionControllerType)
 			return nil
 		}
 	default:
-		return fmt.Errorf("unspport revision type, %s", revisionType)
+		return fmt.Errorf("unspport revision controller type, %s", revisionControllerType)
 	}
 
-	key := strings.Join([]string{fn.Namespace, fn.Name, revisionType}, "/")
+	key := strings.Join([]string{fn.Namespace, fn.Name, revisionControllerType}, "/")
 	rc := r.revisionControllers[key]
 	if rc != nil {
 		return rc.Update(config)
 	}
 
-	rc, err = newRevisionController(r.Client, fn, revisionType, config)
+	rc, err = newRevisionController(r.Client, fn, revisionControllerType, config)
 	if err != nil {
 		return err
 	}
@@ -150,11 +150,11 @@ func (r *FunctionReconciler) addRevisionController(fn *openfunction.Function) er
 	return nil
 }
 
-func (r *FunctionReconciler) cleanRevisionByFunction(fn *openfunction.Function, ignored ...string) {
+func (r *FunctionReconciler) cleanRevisionControllerByFunction(fn *openfunction.Function, ignored ...string) {
 	toBeDeleted := map[string]bool{
-		constants.RevisionTypeSource:      true,
-		constants.RevisionTypeSourceImage: true,
-		constants.RevisionTypeImage:       true,
+		constants.RevisionControllerTypeSource:      true,
+		constants.RevisionControllerTypeSourceImage: true,
+		constants.RevisionControllerTypeImage:       true,
 	}
 	for k := range toBeDeleted {
 		if !utils.StringInList(k, ignored) {
@@ -163,8 +163,8 @@ func (r *FunctionReconciler) cleanRevisionByFunction(fn *openfunction.Function, 
 	}
 }
 
-func (r *FunctionReconciler) deleteRevisionController(fn *openfunction.Function, revisionType string) {
-	key := strings.Join([]string{fn.Namespace, fn.Name, revisionType}, "/")
+func (r *FunctionReconciler) deleteRevisionController(fn *openfunction.Function, revisionControllerType string) {
+	key := strings.Join([]string{fn.Namespace, fn.Name, revisionControllerType}, "/")
 	if rc, ok := r.revisionControllers[key]; ok {
 		rc.Stop()
 		delete(r.revisionControllers, key)
@@ -177,21 +177,21 @@ func getRevisionControllerConfig(params string) (map[string]string, error) {
 		return nil, err
 	}
 
-	if config[constants.RevisionType] == "" {
-		config[constants.RevisionType] = constants.RevisionTypeSource
+	if config[constants.RevisionControllerType] == "" {
+		config[constants.RevisionControllerType] = constants.RevisionControllerTypeSource
 	}
 
 	return config, nil
 }
 
-func newRevisionController(c client.Client, fn *openfunction.Function, revisionType string, config map[string]string) (revisioncontroller.RevisionController, error) {
-	switch revisionType {
-	case constants.RevisionTypeSource:
-		return git.NewRevisionController(c, fn, revisionType, config)
-	case constants.RevisionTypeImage:
-		return image.NewRevisionController(c, fn, revisionType, config)
+func newRevisionController(c client.Client, fn *openfunction.Function, revisionControllerType string, config map[string]string) (revisioncontroller.RevisionController, error) {
+	switch revisionControllerType {
+	case constants.RevisionControllerTypeSource:
+		return git.NewRevisionController(c, fn, revisionControllerType, config)
+	case constants.RevisionControllerTypeImage:
+		return image.NewRevisionController(c, fn, revisionControllerType, config)
 	default:
-		return nil, fmt.Errorf("unspported revision type, %s", revisionType)
+		return nil, fmt.Errorf("unspported revision controller type, %s", revisionControllerType)
 	}
 }
 

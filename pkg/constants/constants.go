@@ -3,17 +3,17 @@ package constants
 import "time"
 
 const (
-	RevisionType     = "type"
-	PollingInterval  = "polling-interval"
-	RepoType         = "repo-type"
-	BaseURL          = "base-url"
-	AuthType         = "auth-type"
-	Project          = "project-id"
-	InsecureRegistry = "insecure-registry"
+	RevisionControllerType = "type"
+	PollingInterval        = "polling-interval"
+	RepoType               = "repo-type"
+	BaseURL                = "base-url"
+	AuthType               = "auth-type"
+	Project                = "project-id"
+	InsecureRegistry       = "insecure-registry"
 
-	RevisionTypeSource      = "source"
-	RevisionTypeSourceImage = "source-image"
-	RevisionTypeImage       = "image"
+	RevisionControllerTypeSource      = "source"
+	RevisionControllerTypeSourceImage = "source-image"
+	RevisionControllerTypeImage       = "image"
 
 	DefaultPollingInterval = time.Second * 5
 )
