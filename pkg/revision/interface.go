@@ -1,6 +1,6 @@
 package revision
 
-type Revision interface {
+type RevisionController interface {
 	Start()
 	Update(config map[string]string) error
 	Stop()

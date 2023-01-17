@@ -31,7 +31,6 @@ import (
 	"github.com/openfunction/revision-controller/pkg/revision/image"
 	"github.com/openfunction/revision-controller/pkg/utils"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -49,19 +48,16 @@ var (
 // FunctionReconciler reconciles a Function object
 type FunctionReconciler struct {
 	client.Client
-	Log    logr.Logger
-	Scheme *runtime.Scheme
-	ctx    context.Context
+	log logr.Logger
 
-	revisions map[string]revision.Revision
+	revisionControllers map[string]revision.RevisionController
 }
 
 func NewFunctionReconciler(mgr manager.Manager) *FunctionReconciler {
 	r := &FunctionReconciler{
-		Client:    mgr.GetClient(),
-		Scheme:    mgr.GetScheme(),
-		Log:       ctrl.Log.WithName("controllers").WithName("Function"),
-		revisions: make(map[string]revision.Revision),
+		Client:              mgr.GetClient(),
+		log:                 ctrl.Log.WithName("controllers").WithName("Function"),
+		revisionControllers: make(map[string]revision.RevisionController),
 	}
 
 	return r
@@ -79,8 +75,7 @@ func NewFunctionReconciler(mgr manager.Manager) *FunctionReconciler {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.8.3/pkg/reconcile
 func (r *FunctionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	r.ctx = ctx
-	log := r.Log.WithValues("Function", req.NamespacedName)
+	log := r.log.WithValues("Function", req.NamespacedName)
 
 	fn := &openfunction.Function{
 		ObjectMeta: metav1.ObjectMeta{
@@ -104,11 +99,11 @@ func (r *FunctionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, nil
 	}
 
-	return ctrl.Result{}, r.addRevision(fn, log)
+	return ctrl.Result{}, r.addRevisionController(fn)
 }
 
-func (r *FunctionReconciler) addRevision(fn *openfunction.Function, log logr.Logger) error {
-	config, err := getRevisionConfig(fn.Annotations[revisionParamsKey])
+func (r *FunctionReconciler) addRevisionController(fn *openfunction.Function) error {
+	config, err := getRevisionControllerConfig(fn.Annotations[revisionParamsKey])
 	if err != nil {
 		return err
 	}
@@ -119,20 +114,20 @@ func (r *FunctionReconciler) addRevision(fn *openfunction.Function, log logr.Log
 	switch revisionType {
 	case constants.RevisionTypeSource:
 		if fn.Spec.Build == nil {
-			r.deleteRevision(fn, revisionType)
+			r.deleteRevisionController(fn, revisionType)
 			return nil
 		}
 
 		if fn.Spec.Build.SrcRepo.Revision != nil {
 			if commitShaRegEx.MatchString(*fn.Spec.Build.SrcRepo.Revision) {
-				log.V(1).Info("source code point to a commit, no need to start revision")
-				r.deleteRevision(fn, revisionType)
+				r.log.V(1).Info("source code point to a commit, no need to start revision")
+				r.deleteRevisionController(fn, revisionType)
 				return nil
 			}
 		}
 	case constants.RevisionTypeImage:
 		if fn.Spec.Serving == nil {
-			r.deleteRevision(fn, revisionType)
+			r.deleteRevisionController(fn, revisionType)
 			return nil
 		}
 	default:
@@ -140,18 +135,18 @@ func (r *FunctionReconciler) addRevision(fn *openfunction.Function, log logr.Log
 	}
 
 	key := strings.Join([]string{fn.Namespace, fn.Name, revisionType}, "/")
-	fr := r.revisions[key]
-	if fr != nil {
-		return fr.Update(config)
+	rc := r.revisionControllers[key]
+	if rc != nil {
+		return rc.Update(config)
 	}
 
-	fr, err = newRevision(r.Client, fn, revisionType, config)
+	rc, err = newRevisionController(r.Client, fn, revisionType, config)
 	if err != nil {
 		return err
 	}
 
-	fr.Start()
-	r.revisions[key] = fr
+	rc.Start()
+	r.revisionControllers[key] = rc
 	return nil
 }
 
@@ -163,23 +158,20 @@ func (r *FunctionReconciler) cleanRevisionByFunction(fn *openfunction.Function, 
 	}
 	for k := range toBeDeleted {
 		if !utils.StringInList(k, ignored) {
-			r.deleteRevision(fn, k)
+			r.deleteRevisionController(fn, k)
 		}
 	}
 }
 
-func (r *FunctionReconciler) deleteRevision(fn *openfunction.Function, revisionType string) {
+func (r *FunctionReconciler) deleteRevisionController(fn *openfunction.Function, revisionType string) {
 	key := strings.Join([]string{fn.Namespace, fn.Name, revisionType}, "/")
-	fr := r.revisions[key]
-	if fr == nil {
-		return
+	if rc, ok := r.revisionControllers[key]; ok {
+		rc.Stop()
+		delete(r.revisionControllers, key)
 	}
-
-	fr.Stop()
-	delete(r.revisions, key)
 }
 
-func getRevisionConfig(params string) (map[string]string, error) {
+func getRevisionControllerConfig(params string) (map[string]string, error) {
 	config := make(map[string]string)
 	if err := utils.YamlUnmarshal([]byte(params), config); err != nil {
 		return nil, err
@@ -192,12 +184,12 @@ func getRevisionConfig(params string) (map[string]string, error) {
 	return config, nil
 }
 
-func newRevision(c client.Client, fn *openfunction.Function, revisionType string, config map[string]string) (revision.Revision, error) {
+func newRevisionController(c client.Client, fn *openfunction.Function, revisionType string, config map[string]string) (revision.RevisionController, error) {
 	switch revisionType {
 	case constants.RevisionTypeSource:
-		return git.NewRevision(c, fn, revisionType, config)
+		return git.NewRevisionController(c, fn, revisionType, config)
 	case constants.RevisionTypeImage:
-		return image.NewRevision(c, fn, revisionType, config)
+		return image.NewRevisionController(c, fn, revisionType, config)
 	default:
 		return nil, fmt.Errorf("unspported revision type, %s", revisionType)
 	}

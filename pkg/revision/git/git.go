@@ -31,7 +31,7 @@ const (
 	gitProviderGitee  = "gitee"
 )
 
-type Revision struct {
+type RevisionController struct {
 	client.Client
 	log    logr.Logger
 	fn     *openfunction.Function
@@ -48,10 +48,10 @@ type Config struct {
 	PollingInterval time.Duration
 }
 
-func NewRevision(c client.Client, fn *openfunction.Function, revisionType string, config map[string]string) (revision.Revision, error) {
-	r := &Revision{
+func NewRevisionController(c client.Client, fn *openfunction.Function, revisionType string, config map[string]string) (revision.RevisionController, error) {
+	r := &RevisionController{
 		Client: c,
-		log:    ctrl.Log.WithName("Revision").WithValues("Function", fn.Namespace+"/"+fn.Name, "Type", revisionType),
+		log:    ctrl.Log.WithName("RevisionController").WithValues("Function", fn.Namespace+"/"+fn.Name, "Type", revisionType),
 		fn:     fn,
 		stopCh: make(chan os.Signal),
 	}
@@ -72,7 +72,7 @@ func NewRevision(c client.Client, fn *openfunction.Function, revisionType string
 	return r, err
 }
 
-func (r *Revision) Start() {
+func (r *RevisionController) Start() {
 	go func() {
 		compare := func() {
 			head, err := r.gitProvider.GetHead()
@@ -118,7 +118,7 @@ func (r *Revision) Start() {
 	r.log.Info("revision started")
 }
 
-func (r *Revision) Update(config map[string]string) error {
+func (r *RevisionController) Update(config map[string]string) error {
 	revisionConfig, err := r.getRevisionConfig(config)
 	if err != nil {
 		return err
@@ -145,12 +145,12 @@ func (r *Revision) Update(config map[string]string) error {
 	return nil
 }
 
-func (r *Revision) Stop() {
+func (r *RevisionController) Stop() {
 	close(r.stopCh)
 	signal.Stop(r.stopCh)
 }
 
-func (r *Revision) getRevisionConfig(config map[string]string) (*Config, error) {
+func (r *RevisionController) getRevisionConfig(config map[string]string) (*Config, error) {
 	interval := constants.DefaultPollingInterval
 	str := config[constants.PollingInterval]
 	if str != "" {
@@ -173,7 +173,7 @@ func (r *Revision) getRevisionConfig(config map[string]string) (*Config, error) 
 	return revisionConfig, nil
 }
 
-func (r *Revision) getGitConfig(config map[string]string) (*provider.GitConfig, error) {
+func (r *RevisionController) getGitConfig(config map[string]string) (*provider.GitConfig, error) {
 	function, err := r.getFunction()
 	if err != nil {
 		return nil, err
@@ -205,7 +205,7 @@ func (r *Revision) getGitConfig(config map[string]string) (*provider.GitConfig, 
 	return gitConfig, nil
 }
 
-func (r *Revision) getCurrentHead() (string, error) {
+func (r *RevisionController) getCurrentHead() (string, error) {
 	function, err := r.getFunction()
 	if err != nil {
 		return "", err
@@ -224,7 +224,7 @@ func (r *Revision) getCurrentHead() (string, error) {
 	return "", nil
 }
 
-func (r *Revision) updateFunctionStatus(head string) error {
+func (r *RevisionController) updateFunctionStatus(head string) error {
 	function, err := r.getFunction()
 	if err != nil {
 		return err
@@ -242,7 +242,7 @@ func (r *Revision) updateFunctionStatus(head string) error {
 	return r.Status().Update(context.Background(), function)
 }
 
-func (r *Revision) getFunction() (*openfunction.Function, error) {
+func (r *RevisionController) getFunction() (*openfunction.Function, error) {
 	fn := &openfunction.Function{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      r.fn.Name,

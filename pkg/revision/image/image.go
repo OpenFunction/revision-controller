@@ -22,7 +22,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-type Revision struct {
+type RevisionController struct {
 	client.Client
 	log      logr.Logger
 	fn       *openfunction.Function
@@ -44,10 +44,10 @@ type imageConfig struct {
 	credential *v1.LocalObjectReference
 }
 
-func NewRevision(c client.Client, fn *openfunction.Function, revisionType string, config map[string]string) (revision.Revision, error) {
-	r := &Revision{
+func NewRevisionController(c client.Client, fn *openfunction.Function, revisionType string, config map[string]string) (revision.RevisionController, error) {
+	r := &RevisionController{
 		Client: c,
-		log:    ctrl.Log.WithName("Revision").WithValues("Function", fn.Namespace+"/"+fn.Name, "Type", revisionType),
+		log:    ctrl.Log.WithName("RevisionController").WithValues("Function", fn.Namespace+"/"+fn.Name, "Type", revisionType),
 		fn:     fn,
 		stopCh: make(chan os.Signal),
 	}
@@ -67,7 +67,7 @@ func NewRevision(c client.Client, fn *openfunction.Function, revisionType string
 	return r, err
 }
 
-func (r *Revision) Start() {
+func (r *RevisionController) Start() {
 	go func() {
 		compare := func() {
 			digest, err := r.getLatestImageDigest()
@@ -106,7 +106,7 @@ func (r *Revision) Start() {
 	r.log.Info("revision started")
 }
 
-func (r *Revision) Update(config map[string]string) error {
+func (r *RevisionController) Update(config map[string]string) error {
 	revisionConfig, err := r.getRevisionConfig(config)
 	if err != nil {
 		return err
@@ -121,12 +121,12 @@ func (r *Revision) Update(config map[string]string) error {
 	return nil
 }
 
-func (r *Revision) Stop() {
+func (r *RevisionController) Stop() {
 	close(r.stopCh)
 	signal.Stop(r.stopCh)
 }
 
-func (r *Revision) getRevisionConfig(config map[string]string) (*Config, error) {
+func (r *RevisionController) getRevisionConfig(config map[string]string) (*Config, error) {
 	function, err := r.getFunction()
 	if err != nil {
 		return nil, err
@@ -161,7 +161,7 @@ func (r *Revision) getRevisionConfig(config map[string]string) (*Config, error) 
 	return revisionConfig, nil
 }
 
-func (r *Revision) getKeychain(revisionConfig *Config) (authn.Keychain, error) {
+func (r *RevisionController) getKeychain(revisionConfig *Config) (authn.Keychain, error) {
 	if revisionConfig.credential == nil {
 		return nil, fmt.Errorf("image credential must be specified")
 	}
@@ -180,7 +180,7 @@ func (r *Revision) getKeychain(revisionConfig *Config) (authn.Keychain, error) {
 	return k8schain.NewFromPullSecrets(context.Background(), []v1.Secret{secret})
 }
 
-func (r *Revision) getLatestImageDigest() (string, error) {
+func (r *RevisionController) getLatestImageDigest() (string, error) {
 	var auth authn.Authenticator
 	opts := []name.Option{name.WeakValidation}
 	if r.config.insecure {
@@ -204,7 +204,7 @@ func (r *Revision) getLatestImageDigest() (string, error) {
 	return descriptor.Digest.String(), nil
 }
 
-func (r *Revision) getCurrentImageDigest() (string, error) {
+func (r *RevisionController) getCurrentImageDigest() (string, error) {
 	function, err := r.getFunction()
 	if err != nil {
 		return "", err
@@ -217,7 +217,7 @@ func (r *Revision) getCurrentImageDigest() (string, error) {
 	return function.Status.Revision.ImageDigest, nil
 }
 
-func (r *Revision) updateFunctionStatus(digest string) error {
+func (r *RevisionController) updateFunctionStatus(digest string) error {
 	function, err := r.getFunction()
 	if err != nil {
 		return err
@@ -240,7 +240,7 @@ func (r *Revision) updateFunctionStatus(digest string) error {
 	return r.Status().Update(context.Background(), function)
 }
 
-func (r *Revision) getFunction() (*openfunction.Function, error) {
+func (r *RevisionController) getFunction() (*openfunction.Function, error) {
 	fn := &openfunction.Function{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      r.fn.Name,
